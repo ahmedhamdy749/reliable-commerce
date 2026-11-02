@@ -34,7 +34,7 @@ def product_list(request):
         {"detail": "This operation is not implemented yet."},
         status=status.HTTP_501_NOT_IMPLEMENTED,
     )
-@api_view(["PUT", "PATCH"])
+@api_view(["PUT", "PATCH", "DELETE"])
 @permission_classes([IsProductManager])
 def product_detail(request, pk):
 
@@ -54,7 +54,11 @@ def product_detail(request, pk):
     if serializer.is_valid():
         serializer.save()
         return Response(serializer.data)
+    if request.method == "DELETE":
+        product.is_active = False
+        product.save(update_fields=["is_active"])
 
+        return Response(status=status.HTTP_204_NO_CONTENT)
     return Response(
         serializer.errors,
         status=status.HTTP_400_BAD_REQUEST,

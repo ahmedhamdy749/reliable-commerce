@@ -322,3 +322,80 @@ class ProductListAPITest(APITestCase):
         self.assertEqual(product.name, "Gaming Keyboard")
         self.assertEqual(product.price, 1500)
         self.assertEqual(product.stock, 35)    
+    def test_delete_soft_deletes_product(self):
+        call_command("setup_product_permissions")
+
+        user = get_user_model().objects.create_user(
+            username="delete_manager",
+            password="test-password",
+        )
+
+        group = Group.objects.get(name="Product Managers")
+        user.groups.add(group)
+
+        product = Product.objects.create(
+            name="Old Keyboard",
+            price="1000.00",
+            stock=10,
+        )
+
+        self.client.force_authenticate(user=user)
+
+        response = self.client.delete(
+            f"/api/products/{product.id}/"
+        )
+
+        product.refresh_from_db()
+
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(product.is_active)
+        self.assertTrue(Product.objects.filter(id=product.id).exists())    
+
+
+
+    def test_deleted_product_does_not_appear_in_product_list(self):
+        product = Product.objects.create(
+            name="Deleted Keyboard",
+            price="1000.00",
+            stock=10,
+            is_active=False,
+        )
+
+        response = self.client.get("/api/products/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, [])
+        self.assertTrue(
+            Product.objects.filter(id=product.id).exists()
+        )   
+    def test_deleted_product_cannot_be_updated(self):
+        call_command("setup_product_permissions")
+
+        user = get_user_model().objects.create_user(
+            username="deleted_product_manager",
+            password="test-password",
+        )
+
+        group = Group.objects.get(name="Product Managers")
+        user.groups.add(group)
+
+        product = Product.objects.create(
+            name="Deleted Keyboard",
+            price="1000.00",
+            stock=10,
+            is_active=False,
+        )
+
+        self.client.force_authenticate(user=user)
+
+        response = self.client.patch(
+            f"/api/products/{product.id}/",
+            {"price": "1500.00"},
+            format="json",
+        )
+
+        product.refresh_from_db()
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(product.price, 1000)
+        self.assertFalse(product.is_active)    
