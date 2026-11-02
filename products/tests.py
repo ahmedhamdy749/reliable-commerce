@@ -114,6 +114,7 @@ class ProductListAPITest(APITestCase):
 
         self.assertEqual(response.status_code, 201)
         self.assertEqual(Product.objects.count(), 1)
+        
     def test_product_manager_group_grants_add_permission(self):
         call_command("setup_product_permissions")
 
@@ -139,6 +140,7 @@ class ProductListAPITest(APITestCase):
 
         self.assertEqual(response.status_code, 201)
         self.assertEqual(Product.objects.count(), 1)  
+
     def test_product_creation_rejects_zero_price(self):
         call_command("setup_product_permissions")
 
@@ -165,6 +167,7 @@ class ProductListAPITest(APITestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("price", response.data)
         self.assertEqual(Product.objects.count(), 0)   
+
     def test_patch_updates_only_the_provided_field(self):
         call_command("setup_product_permissions")
 
@@ -197,7 +200,8 @@ class ProductListAPITest(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(product.price, 1200)
         self.assertEqual(product.name, "Keyboard")
-        self.assertEqual(product.stock, 20)      
+        self.assertEqual(product.stock, 20)   
+
     def test_patch_returns_404_for_nonexistent_product(self):
         call_command("setup_product_permissions")
 
@@ -216,11 +220,7 @@ class ProductListAPITest(APITestCase):
             {"price": "1200.00"},
             format="json",
         )
-
         self.assertEqual(response.status_code, 404)     
-
-
-
 
     def test_patch_returns_404_for_inactive_product(self):
         call_command("setup_product_permissions")
@@ -252,6 +252,7 @@ class ProductListAPITest(APITestCase):
 
         self.assertEqual(response.status_code, 404)
         self.assertEqual(product.price, 1000)
+
     def test_put_requires_all_required_fields(self):
         call_command("setup_product_permissions")
 
@@ -286,7 +287,8 @@ class ProductListAPITest(APITestCase):
         self.assertIn("stock", response.data)
         self.assertEqual(product.name, "Keyboard")
         self.assertEqual(product.price, 1000)
-        self.assertEqual(product.stock, 20)    
+        self.assertEqual(product.stock, 20)  
+
     def test_put_replaces_all_product_fields(self):
         call_command("setup_product_permissions")
 
@@ -321,7 +323,8 @@ class ProductListAPITest(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(product.name, "Gaming Keyboard")
         self.assertEqual(product.price, 1500)
-        self.assertEqual(product.stock, 35)    
+        self.assertEqual(product.stock, 35)  
+
     def test_delete_soft_deletes_product(self):
         call_command("setup_product_permissions")
 
@@ -368,6 +371,7 @@ class ProductListAPITest(APITestCase):
         self.assertTrue(
             Product.objects.filter(id=product.id).exists()
         )   
+
     def test_deleted_product_cannot_be_updated(self):
         call_command("setup_product_permissions")
 
@@ -398,4 +402,124 @@ class ProductListAPITest(APITestCase):
 
         self.assertEqual(response.status_code, 404)
         self.assertEqual(product.price, 1000)
-        self.assertFalse(product.is_active)    
+        self.assertFalse(product.is_active)   
+
+    def test_customer_without_permission_cannot_update_product(self):
+        user = get_user_model().objects.create_user(
+            username="customer_patch",
+            password="test-password",
+        )
+
+        product = Product.objects.create(
+            name="Keyboard",
+            price="1000.00",
+            stock=20,
+        )
+
+        self.client.force_authenticate(user=user)
+
+        response = self.client.patch(
+            f"/api/products/{product.id}/",
+            {"price": "1500.00"},
+            format="json",
+        )
+
+        product.refresh_from_db()
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(product.price, 1000)
+        self.assertEqual(product.name, "Keyboard")  
+
+    def test_customer_without_permission_cannot_replace_product(self):
+        user = get_user_model().objects.create_user(
+            username="customer_put",
+            password="test-password",
+        )
+
+        product = Product.objects.create(
+            name="Keyboard",
+            price="1000.00",
+            stock=20,
+        )
+
+        self.client.force_authenticate(user=user)
+
+        response = self.client.put(
+            f"/api/products/{product.id}/",
+            {
+                "name": "New Keyboard",
+                "price": "1500.00",
+                "stock": 30,
+            },
+            format="json",
+        )
+
+        product.refresh_from_db()
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(product.name, "Keyboard")
+        self.assertEqual(product.price, 1000)
+        self.assertEqual(product.stock, 20) 
+
+    def test_customer_without_permission_cannot_delete_product(self):
+        user = get_user_model().objects.create_user(
+            username="customer_delete",
+            password="test-password",
+        )
+
+        product = Product.objects.create(
+            name="Keyboard",
+            price="1000.00",
+            stock=20,
+        )
+
+        self.client.force_authenticate(user=user)
+
+        response = self.client.delete(
+            f"/api/products/{product.id}/"
+        )
+
+        product.refresh_from_db()
+
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(product.is_active)
+        self.assertTrue(
+            Product.objects.filter(id=product.id).exists()
+        )       
+
+    def test_change_permission_does_not_grant_delete_permission(self):
+        user = get_user_model().objects.create_user(
+            username="editor_only",
+            password="test-password",
+        )
+
+        permission = Permission.objects.get(
+            content_type__app_label="products",
+            codename="change_product",
+        )
+        user.user_permissions.add(permission)
+
+        product = Product.objects.create(
+            name="Keyboard",
+            price="1000.00",
+            stock=20,
+        )
+
+        self.client.force_authenticate(user=user)
+
+        patch_response = self.client.patch(
+            f"/api/products/{product.id}/",
+            {"price": "1200.00"},
+            format="json",
+        )
+
+        delete_response = self.client.delete(
+            f"/api/products/{product.id}/"
+        )
+
+        product.refresh_from_db()
+
+        self.assertEqual(patch_response.status_code, 200)
+        self.assertEqual(delete_response.status_code, 403)
+        self.assertEqual(product.price, 1200)
+        self.assertTrue(product.is_active)       
