@@ -5,16 +5,21 @@ from django.shortcuts import get_object_or_404
 from .models import Product
 from .serializers import ProductSerializer
 from .permissions import IsProductManager
-
+from .pagination import ProductPagination
 
 @api_view(["GET", "POST"])
 @permission_classes([IsProductManager])
 def product_list(request):
 
     if request.method == "GET":
-        products = Product.objects.filter(is_active=True)
-        serializer = ProductSerializer(products, many=True)
-        return Response(serializer.data)
+        products = Product.objects.filter(is_active=True).order_by("id")
+
+        paginator = ProductPagination()
+        page = paginator.paginate_queryset(products, request)
+
+        serializer = ProductSerializer(page, many=True)
+
+        return paginator.get_paginated_response(serializer.data)
     if request.method == "POST":
         serializer = ProductSerializer(data=request.data)
 

@@ -27,9 +27,8 @@ class ProductListAPITest(APITestCase):
         response = self.client.get("/api/products/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["name"], "Active Keyboard")
-
+        self.assertEqual(len(response.data["results"]), 1)
+        self.assertEqual(response.data["results"][0]["name"],"Active Keyboard",)
 
     def test_database_rejects_zero_price(self):
         with self.assertRaises(IntegrityError):
@@ -46,7 +45,7 @@ class ProductListAPITest(APITestCase):
         response = self.client.get("/api/products/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data, [])
+        self.assertEqual(response.data["results"], [])
 
     def test_product_creation_is_disabled(self):
         response = self.client.post(
@@ -367,7 +366,7 @@ class ProductListAPITest(APITestCase):
         response = self.client.get("/api/products/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data, [])
+        self.assertEqual(response.data["results"], [])
         self.assertTrue(
             Product.objects.filter(id=product.id).exists()
         )   
@@ -523,3 +522,82 @@ class ProductListAPITest(APITestCase):
         self.assertEqual(delete_response.status_code, 403)
         self.assertEqual(product.price, 1200)
         self.assertTrue(product.is_active)       
+    def test_first_page_returns_20_products(self):
+        Product.objects.bulk_create([
+            Product(
+                name=f"Product {i}",
+                price=100 + i,
+                stock=10,
+            )
+            for i in range(27)
+        ])
+
+        response = self.client.get("/api/products/?page=1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 27)
+        self.assertEqual(len(response.data["results"]), 20)
+        self.assertIsNotNone(response.data["next"])
+        self.assertIsNone(response.data["previous"])
+
+    def test_second_page_returns_remaining_7_products(self):
+        Product.objects.bulk_create([
+            Product(
+                name=f"Product {i}",
+                price=100 + i,
+                stock=10,
+            )
+            for i in range(27)
+        ])
+
+        response = self.client.get("/api/products/?page=2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 27)
+        self.assertEqual(len(response.data["results"]), 7)
+        self.assertIsNone(response.data["next"])
+        self.assertIsNotNone(response.data["previous"])
+
+    def test_nonexistent_page_returns_404(self):
+        Product.objects.bulk_create([
+            Product(
+                name=f"Product {i}",
+                price=100 + i,
+                stock=10,
+            )
+            for i in range(27)
+        ])
+
+        response = self.client.get("/api/products/?page=3")
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_inactive_products_are_excluded_from_pagination(self):
+        Product.objects.bulk_create([
+            Product(
+                name=f"Active Product {i}",
+                price=100 + i,
+                stock=10,
+                is_active=True,
+            )
+            for i in range(25)
+        ])
+
+        Product.objects.bulk_create([
+            Product(
+                name=f"Inactive Product {i}",
+                price=200 + i,
+                stock=10,
+                is_active=False,
+            )
+            for i in range(5)
+        ])
+
+        response = self.client.get("/api/products/?page=2")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 25)
+        self.assertEqual(len(response.data["results"]), 5)
+
+        for product in response.data["results"]:
+            self.assertNotIn("Inactive", product["name"])
