@@ -6,9 +6,12 @@ from .models import Product
 from .serializers import ProductSerializer
 from .permissions import IsProductManager
 from .pagination import ProductPagination
+from rest_framework.decorators import throttle_classes
+from .throttles import GetAnonRateThrottle, GetUserRateThrottle
 
 @api_view(["GET", "POST"])
 @permission_classes([IsProductManager])
+@throttle_classes([GetAnonRateThrottle, GetUserRateThrottle])
 def product_list(request):
 
     if request.method == "GET":

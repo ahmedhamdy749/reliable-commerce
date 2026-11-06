@@ -5,6 +5,11 @@ from django.contrib.auth.models import Group
 from django.core.management import call_command
 from .models import Product
 from django.db import IntegrityError, transaction
+from django.core.cache import cache
+from django.test import override_settings
+from rest_framework.settings import api_settings
+from .throttles import GetAnonRateThrottle, GetUserRateThrottle
+
 
 
 class ProductListAPITest(APITestCase):
@@ -424,7 +429,6 @@ class ProductListAPITest(APITestCase):
         )
 
         product.refresh_from_db()
-
         self.assertEqual(response.status_code, 403)
         self.assertEqual(product.price, 1000)
         self.assertEqual(product.name, "Keyboard")  
@@ -601,3 +605,82 @@ class ProductListAPITest(APITestCase):
 
         for product in response.data["results"]:
             self.assertNotIn("Inactive", product["name"])
+
+class ProductThrottleTests(APITestCase):
+    def setUp(self):
+        cache.clear()
+
+        self.original_anon_rates = GetAnonRateThrottle.THROTTLE_RATES
+        self.original_user_rates = GetUserRateThrottle.THROTTLE_RATES
+
+        GetAnonRateThrottle.THROTTLE_RATES = {
+            "anon": "2/minute",
+        }
+
+        GetUserRateThrottle.THROTTLE_RATES = {
+            "user": "2/minute",
+        }
+
+        self.addCleanup(
+            setattr,
+            GetAnonRateThrottle,
+            "THROTTLE_RATES",
+            self.original_anon_rates,
+        )
+
+        self.addCleanup(
+            setattr,
+            GetUserRateThrottle,
+            "THROTTLE_RATES",
+            self.original_user_rates,
+        )
+
+    def test_anonymous_user_is_throttled_after_two_get_requests(self):
+        first_response = self.client.get("/api/products/")
+        second_response = self.client.get("/api/products/")
+        third_response = self.client.get("/api/products/")
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(second_response.status_code, 200)
+        self.assertEqual(third_response.status_code, 429)
+
+    def test_authenticated_user_is_throttled_after_two_get_requests(self):
+        user = get_user_model().objects.create_user(
+            username="customer",
+            password="test-password",
+        )
+
+        self.client.force_authenticate(user=user)
+
+        first_response = self.client.get("/api/products/")
+        second_response = self.client.get("/api/products/")
+        third_response = self.client.get("/api/products/")
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(second_response.status_code, 200)
+        self.assertEqual(third_response.status_code, 429)
+
+    def test_post_requests_are_not_throttled(self):
+        user = get_user_model().objects.create_user(
+            username="manager",
+            password="test-password",
+        )
+
+        add_permission = Permission.objects.get(
+            content_type__app_label="products",
+            codename="add_product",
+        )
+
+        user.user_permissions.add(add_permission)
+        self.client.force_authenticate(user=user)
+
+        for i in range(3):
+            response = self.client.post(
+                "/api/products/",
+                {
+                    "name": f"Throttle Test Product {i}",
+                    "price": "100.00",
+                    "stock": 10,
+                },
+            )
+        self.assertEqual(response.status_code, 201)
