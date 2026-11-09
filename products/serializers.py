@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
 from .models import (
@@ -20,6 +21,10 @@ class RegisterSerializer(serializers.ModelSerializer):
         model = User
         fields = ("id", "username", "email", "password")
         read_only_fields = ("id",)
+
+    def validate_password(self, value):
+        validate_password(value)
+        return value
 
     def create(self, validated_data):
         return User.objects.create_user(**validated_data)
@@ -108,21 +113,23 @@ class CartSerializer(serializers.ModelSerializer):
 
     def get_total_amount(self, obj):
         return sum(
-            (item.product.price * item.quantity for item in obj.items.select_related("product")),
+            (
+                item.product.price * item.quantity
+                for item in obj.items.select_related("product")
+            ),
             start=0,
         )
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
-    line_total = serializers.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        read_only=True,
-    )
+    line_total = serializers.SerializerMethodField()
 
     class Meta:
         model = OrderItem
         fields = ("id", "product_name", "unit_price", "quantity", "line_total")
+
+    def get_line_total(self, obj):
+        return obj.line_total
 
 
 class OrderSerializer(serializers.ModelSerializer):
