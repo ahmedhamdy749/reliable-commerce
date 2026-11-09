@@ -276,12 +276,17 @@ class CancelOrderView(APIView):
 class OrderStatusUpdateView(APIView):
     permission_classes = [IsOrderManager]
 
+    @transaction.atomic
     def patch(self, request, pk):
-        order = get_object_or_404(Order, pk=pk)
+        order = get_object_or_404(
+            Order.objects.select_for_update().prefetch_related("items"),
+            pk=pk,
+        )
         new_status = request.data.get("status")
         valid_statuses = {choice for choice, _ in Order.Status.choices}
         if new_status not in valid_statuses:
             raise ValidationError({"status": "Invalid order status."})
+
         allowed_transitions = {
             Order.Status.PENDING: {Order.Status.PROCESSING, Order.Status.CANCELLED},
             Order.Status.PROCESSING: {Order.Status.SHIPPED, Order.Status.CANCELLED},
@@ -291,11 +296,13 @@ class OrderStatusUpdateView(APIView):
         }
         if new_status not in allowed_transitions[order.status]:
             raise ValidationError({"status": "This status transition is not allowed."})
+
         if new_status == Order.Status.CANCELLED:
-            return Response(
-                {"detail": "Use the customer cancellation endpoint or admin workflow to cancel and restock."},
-                status=status.HTTP_409_CONFLICT,
-            )
+            for item in order.items.all():
+                product = Product.objects.select_for_update().get(pk=item.product_id)
+                product.stock += item.quantity
+                product.save(update_fields=["stock", "updated_at"])
+
         order.status = new_status
         order.save(update_fields=["status", "updated_at"])
         return Response(OrderSerializer(order).data)
