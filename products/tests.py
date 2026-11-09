@@ -52,7 +52,7 @@ class ProductListAPITest(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["results"], [])
 
-    def test_product_creation_is_disabled(self):
+    def test_anonymous_user_cannot_create_product(self):
         response = self.client.post(
             "/api/products/",
             {
@@ -63,7 +63,7 @@ class ProductListAPITest(APITestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 401)
         self.assertEqual(Product.objects.count(), 0)
 
     def test_authenticated_user_without_permission_cannot_create_product(self):
