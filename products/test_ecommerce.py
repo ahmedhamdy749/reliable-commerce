@@ -77,16 +77,14 @@ class ECommerceFlowTests(APITestCase):
         self.assertEqual(order.items.first().product_name, "Mechanical Keyboard")
 
     def test_checkout_rejects_insufficient_stock_without_partial_changes(self):
-        self.client.post(
-            "/api/cart/items/",
-            {"product_id": self.product.pk, "quantity": 6},
-            format="json",
-        )
+        cart = Cart.objects.create(user=self.user)
+        CartItem.objects.create(cart=cart, product=self.product, quantity=6)
         response = self.client.post("/api/orders/")
         self.product.refresh_from_db()
         self.assertEqual(response.status_code, 400)
         self.assertEqual(self.product.stock, 5)
         self.assertFalse(Order.objects.filter(user=self.user).exists())
+        self.assertTrue(CartItem.objects.filter(cart=cart).exists())
 
     def test_customer_cannot_read_another_customers_order(self):
         order = Order.objects.create(user=self.other_user, total_amount="10.00")
