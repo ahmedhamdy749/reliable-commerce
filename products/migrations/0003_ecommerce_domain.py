@@ -42,6 +42,10 @@ class Migration(migrations.Migration):
             field=models.DateTimeField(auto_now=True, default=timezone.now),
             preserve_default=False,
         ),
+        migrations.AlterModelOptions(
+            name="product",
+            options={"ordering": ("id",)},
+        ),
         migrations.AddConstraint(
             model_name="product",
             constraint=models.CheckConstraint(condition=models.Q(("stock__gte", 0)), name="product_stock_must_be_nonnegative"),
@@ -94,7 +98,7 @@ class Migration(migrations.Migration):
                 ("unit_price", models.DecimalField(decimal_places=2, max_digits=10)),
                 ("quantity", models.PositiveIntegerField()),
                 ("order", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="items", to="products.order")),
-                ("product", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="order_items", to="products.product")),
+                ("product", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="order_items", to="products.product")),
             ],
         ),
         migrations.AddConstraint(
