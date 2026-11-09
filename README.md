@@ -32,6 +32,19 @@ python manage.py runserver
 
 The API is available under /api/; interactive OpenAPI documentation is at /api/docs/ and the schema is at /api/schema/; Django admin is at /admin/.
 
+## Docker Compose
+
+Copy .env.example to .env and replace both placeholder secrets. Then run:
+
+```bash
+docker compose up --build -d
+docker compose exec web python manage.py migrate
+docker compose exec web python manage.py setup_product_permissions
+docker compose exec web python manage.py createsuperuser
+```
+
+Open http://localhost:8000/api/docs/ for API documentation or http://localhost:8000/admin/ for administration. The Compose profile uses HTTP for local development; production deployments must terminate HTTPS and keep secure cookies and SSL redirect enabled.
+
 ## Environment variables
 | Variable | Default | Purpose |
 |---|---|---|
