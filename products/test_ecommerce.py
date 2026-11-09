@@ -114,3 +114,59 @@ class ECommerceFlowTests(APITestCase):
         self.product.save()
         order_item = OrderItem.objects.get(order_id=response.data["id"])
         self.assertEqual(order_item.product_name, "Mechanical Keyboard")
+
+    def test_unauthenticated_user_cannot_access_cart(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.get("/api/cart/")
+        self.assertEqual(response.status_code, 401)
+
+    def test_order_manager_can_advance_status_and_cancel_with_restock(self):
+        cart = Cart.objects.create(user=self.user)
+        CartItem.objects.create(cart=cart, product=self.product, quantity=2)
+        checkout = self.client.post("/api/orders/")
+        order_id = checkout.data["id"]
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock, 3)
+
+        manager = get_user_model().objects.create_user(
+            username="order-manager",
+            password="strong-test-password",
+            is_staff=True,
+        )
+        self.client.force_authenticate(user=manager)
+        processing = self.client.patch(
+            f"/api/management/orders/{order_id}/status/",
+            {"status": Order.Status.PROCESSING},
+            format="json",
+        )
+        self.assertEqual(processing.status_code, 200)
+
+        cancelled = self.client.patch(
+            f"/api/management/orders/{order_id}/status/",
+            {"status": Order.Status.CANCELLED},
+            format="json",
+        )
+        self.product.refresh_from_db()
+        self.assertEqual(cancelled.status_code, 200)
+        self.assertEqual(self.product.stock, 5)
+
+    def test_invalid_order_status_transition_is_rejected(self):
+        order = Order.objects.create(
+            user=self.user,
+            total_amount="10.00",
+            status=Order.Status.SHIPPED,
+        )
+        manager = get_user_model().objects.create_user(
+            username="status-manager",
+            password="strong-test-password",
+            is_staff=True,
+        )
+        self.client.force_authenticate(user=manager)
+        response = self.client.patch(
+            f"/api/management/orders/{order.pk}/status/",
+            {"status": Order.Status.PENDING},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.SHIPPED)
