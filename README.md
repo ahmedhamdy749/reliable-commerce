@@ -30,7 +30,7 @@ python manage.py createsuperuser
 python manage.py runserver
 ```
 
-The API is available under /api/; Django admin is at /admin/.
+The API is available under /api/; interactive OpenAPI documentation is at /api/docs/ and the schema is at /api/schema/; Django admin is at /admin/.
 
 ## Environment variables
 | Variable | Default | Purpose |
@@ -103,7 +103,7 @@ python manage.py test
 ## Deployment checklist
 - Set DJANGO_DEBUG=false, DJANGO_SECRET_KEY, DJANGO_ALLOWED_HOSTS, and PostgreSQL variables.
 - Configure HTTPS and verify proxy/SSL settings before enabling HSTS.
-- Run migrations and collectstatic.
+- Run migrations and collectstatic; WhiteNoise serves versioned static assets for the Django admin.
 - Create a superuser and assign manager permissions.
 - Configure a shared cache (for example Redis) if running multiple application instances; the built-in throttles use Django's configured cache.
 - Configure backups, monitoring, and a production WSGI/ASGI server.
